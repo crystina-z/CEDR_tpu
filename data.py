@@ -2,6 +2,10 @@ import random
 from tqdm import tqdm
 import torch
 
+import torch_xla.core.xla_model as xm
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = xm.xla_device()
 
 def read_datafiles(files):
     queries = {}
@@ -118,7 +122,8 @@ def _iter_valid_records(model, dataset, run):
 def _pack_n_ship(batch):
     QLEN = 20
     MAX_DLEN = 800
-    DLEN = min(MAX_DLEN, max(len(b) for b in batch['doc_tok']))
+    # DLEN = min(MAX_DLEN, max(len(b) for b in batch['doc_tok']))
+    DLEN = MAX_DLEN
     return {
         'query_id': batch['query_id'],
         'doc_id': batch['doc_id'],
@@ -137,7 +142,8 @@ def _pad_crop(items, l):
         if len(item) > l:
             item = item[:l]
         result.append(item)
-    return torch.tensor(result).long().cuda()
+    # return torch.tensor(result).long().cuda()
+    return torch.tensor(result).long().to(device)
 
 
 def _mask(items, l):
@@ -148,4 +154,6 @@ def _mask(items, l):
         if len(item) >= l:
             item = [1. for _ in item[:l]]
         result.append(item)
-    return torch.tensor(result).float().cuda()
+
+    # return torch.tensor(result).float().cuda()
+    return torch.tensor(result).float().to(device)

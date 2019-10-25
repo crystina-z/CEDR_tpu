@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import pytorch_pretrained_bert
 import modeling_util
 
+import torch_xla.core.xla_model as xm
+device = xm.xla_device()
+print('device in modeling.py:', device)
 
 class BertRanker(torch.nn.Module):
     def __init__(self):
@@ -36,6 +39,10 @@ class BertRanker(torch.nn.Module):
         return toks
 
     def encode_bert(self, query_tok, query_mask, doc_tok, doc_mask):
+        # for xla
+        query_tok, query_mask, doc_tok, doc_mask = \
+            query_tok.to(device), query_mask.to(device), doc_tok.to(device), doc_mask.to(device)
+
         BATCH, QLEN = query_tok.shape
         DIFF = 3 # = [CLS] and 2x[SEP]
         maxlen = self.bert.config.max_position_embeddings
@@ -43,14 +50,17 @@ class BertRanker(torch.nn.Module):
 
         doc_toks, sbcount = modeling_util.subbatch(doc_tok, MAX_DOC_TOK_LEN)
         doc_mask, _ = modeling_util.subbatch(doc_mask, MAX_DOC_TOK_LEN)
-
         query_toks = torch.cat([query_tok] * sbcount, dim=0)
         query_mask = torch.cat([query_mask] * sbcount, dim=0)
 
-        CLSS = torch.full_like(query_toks[:, :1], self.tokenizer.vocab['[CLS]'])
-        SEPS = torch.full_like(query_toks[:, :1], self.tokenizer.vocab['[SEP]'])
-        ONES = torch.ones_like(query_mask[:, :1])
-        NILS = torch.zeros_like(query_mask[:, :1])
+        # for xla
+        doc_toks, doc_mask, query_toks, query_mask = \
+            doc_toks.to(device), doc_mask.to(device), query_toks.to(device), query_mask.to(device)
+
+        CLSS = torch.full_like(query_toks[:, :1], self.tokenizer.vocab['[CLS]']).to(device)
+        SEPS = torch.full_like(query_toks[:, :1], self.tokenizer.vocab['[SEP]']).to(device)
+        ONES = torch.ones_like(query_mask[:, :1]).to(device)
+        NILS = torch.zeros_like(query_mask[:, :1]).to(device)
 
         # build BERT input sequences
         toks = torch.cat([CLSS, query_toks, SEPS, doc_toks, SEPS], dim=1)
@@ -88,7 +98,6 @@ class VanillaBertRanker(BertRanker):
     def forward(self, query_tok, query_mask, doc_tok, doc_mask):
         cls_reps, _, _ = self.encode_bert(query_tok, query_mask, doc_tok, doc_mask)
         return self.cls(self.dropout(cls_reps[-1]))
-
 
 class CedrPacrrRanker(BertRanker):
     def __init__(self):
