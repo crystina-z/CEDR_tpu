@@ -66,7 +66,8 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
             scores = scores.reshape(count, 2)
             loss = torch.mean(1. - scores.softmax(dim=1)[:, 0]) # pariwse softmax
             loss.backward()
-            total_loss += loss.item()
+            # total_loss += loss.item()
+            total_loss += loss
             total += count
             if total % BATCH_SIZE == 0:
                 # optimizer.step()
@@ -74,7 +75,7 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
                 optimizer.zero_grad()
             pbar.update(count)
             if total >= BATCH_SIZE * BATCHES_PER_EPOCH:
-                return total_loss
+                return total_loss.item()
 
 
 def validate(model, dataset, run, qrelf, epoch, model_out_dir):
