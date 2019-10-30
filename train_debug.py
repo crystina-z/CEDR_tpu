@@ -21,7 +21,7 @@ BERT_LR = 2e-5
 MAX_EPOCH = 100
 BATCH_SIZE = 16
 BATCHES_PER_EPOCH = 32
-GRAD_ACC_SIZE = 8
+GRAD_ACC_SIZE = 2
 
 print('device in training.py:', device)
 
@@ -63,9 +63,10 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
     epoch = 0
     top_valid_score = None
     for epoch in range(MAX_EPOCH):
+
         loss = train_iteration(model, optimizer, dataset, train_pairs, qrels)
         print(f'train epoch={epoch} loss={loss}')
-
+        # return
         # train_set = TrainDataset(
         #     it=data.iter_train_pairs(model, dataset, train_pairs, qrels, 1),
         #     length=BATCH_SIZE * BATCHES_PER_EPOCH
@@ -79,12 +80,14 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
         # return
         # model_parallel(train_iteration_multi, train_loader)
 
+        '''
         valid_score = validate(model, dataset, valid_run, qrelf, epoch, model_out_dir)
         print(f'validation epoch={epoch} score={valid_score}')
         if top_valid_score is None or valid_score > top_valid_score:
             top_valid_score = valid_score
             print('new top validation score, saving weights')
             model.save(os.path.join(model_out_dir, 'weights.p'))
+        '''
 
 def train_iteration_multi(model, loader, device, context):
     total = 0
@@ -107,7 +110,8 @@ def train_iteration_multi(model, loader, device, context):
             scores = scores.reshape(count, 2)
             loss = torch.mean(1. - scores.softmax(dim=1)[:, 0]) # pariwse softmax
             loss.backward()
-            total_loss += loss.item()
+            # total_loss += loss.item()
+            total_loss += loss
             total += count
 
             if n_iter > 0:
@@ -120,7 +124,7 @@ def train_iteration_multi(model, loader, device, context):
                 optimizer.zero_grad()
             pbar.update(count)
             # if total >= BATCH_SIZE * BATCHES_PER_EPOCH:
-    return total_loss
+    return total_loss.item()
 
 def train_iteration(model, optimizer, dataset, train_pairs, qrels):
     model.train()
@@ -128,34 +132,34 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
     total_loss = 0.
     with tqdm('training', total=BATCH_SIZE * BATCHES_PER_EPOCH, ncols=80, desc='train') as pbar:
         for n_iter, record in enumerate(data.iter_train_pairs(model, dataset, train_pairs, qrels, GRAD_ACC_SIZE)):
+            # if n_iter > 15:
+                # return
             scores = model(record['query_tok'],
                            record['query_mask'],
                            record['doc_tok'],
                            record['doc_mask'])
             count = len(record['query_id']) // 2
-            scores = scores.reshape(count, 2)
-            loss = torch.mean(1. - scores.softmax(dim=1)[:, 0]) # pariwse softmax
-            loss.backward()
+            # scores = scores.reshape(count, 2)
+
+            # loss = torch.mean(1. - scores.softmax(dim=1)[:, 0]) # pairwise softmax
+            # loss.backward()
             # total_loss += loss.item()
-            total_loss += loss
-            # total_loss += 0.4
+            # total_loss += loss
             total += count
 
             # if n_iter > 0:
-            #     print(n_iter, [len(record[x]) for x in record])
-            #     print(n_iter, [(record[x].size(), record[x].device) for x in ['query_tok', 'query_mask', 'doc_tok', 'doc_mask']])
-            #     # import torch_xla.debug.metrics as met
-            #     # print(met.metrics_report())
+                # print(n_iter, [(record[x].size(), record[x].device) for x in ['query_tok', 'query_mask', 'doc_tok', 'doc_mask']])
+                # import torch_xla.debug.metrics as met
+                # print(met.metrics_report())
 
             if total % BATCH_SIZE == 0:
-                # print('*'*5, n_iter, len(record['query_tok']))
                 xm.optimizer_step(optimizer, barrier=True)
                 optimizer.zero_grad()
 
             pbar.update(count)
             if total >= BATCH_SIZE * BATCHES_PER_EPOCH:
-                # return total_loss
-                return total_loss.item()
+                return total_loss
+                # return total_loss.item()
 
 def validate(model, dataset, run, qrelf, epoch, model_out_dir):
     VALIDATION_METRIC = 'P.20'
@@ -165,7 +169,8 @@ def validate(model, dataset, run, qrelf, epoch, model_out_dir):
 
 
 def run_model(model, dataset, run, runf, desc='valid'):
-    BATCH_SIZE = 16
+    from time import time
+    # BATCH_SIZE = 16
     rerank_run = {}
     with torch.no_grad(), tqdm(total=sum(len(r) for r in run.values()), ncols=80, desc=desc, leave=False) as pbar:
         model.eval()
@@ -174,9 +179,10 @@ def run_model(model, dataset, run, runf, desc='valid'):
                            records['query_mask'],
                            records['doc_tok'],
                            records['doc_mask'])
-            for qid, did, score in zip(records['query_id'], records['doc_id'], scores):
+            for qid, did, score in zip(records['query_id'], records['doc_id'], scores.detach().cpu().numpy()):
                 rerank_run.setdefault(qid, {})[did] = score.item()
             pbar.update(len(records['query_id']))
+
     with open(runf, 'wt') as runfile:
         for qid in rerank_run:
             scores = list(sorted(rerank_run[qid].items(), key=lambda x: (x[1], x[0]), reverse=True))

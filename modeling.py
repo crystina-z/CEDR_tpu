@@ -66,7 +66,7 @@ class BertRanker(torch.nn.Module):
         toks = torch.cat([CLSS, query_toks, SEPS, doc_toks, SEPS], dim=1)
         mask = torch.cat([ONES, query_mask, ONES, doc_mask, ONES], dim=1)
         segment_ids = torch.cat([NILS] * (2 + QLEN) + [ONES] * (1 + doc_toks.shape[1]), dim=1)
-        toks[toks == -1] = 0 # remove padding (will be masked anyway)
+        # toks[toks == -1] = 0 # remove padding (will be masked anyway)
 
         # execute BERT model
         result = self.bert(toks, segment_ids.long(), mask)
@@ -97,7 +97,9 @@ class VanillaBertRanker(BertRanker):
 
     def forward(self, query_tok, query_mask, doc_tok, doc_mask):
         cls_reps, _, _ = self.encode_bert(query_tok, query_mask, doc_tok, doc_mask)
-        return self.cls(self.dropout(cls_reps[-1]))
+        return self.cls(self.dropout(cls_reps[8])) # cannot use -1
+        # return self.cls(self.dropout(cls_reps[nlayers-1]))
+        # pass
 
 class CedrPacrrRanker(BertRanker):
     def __init__(self):

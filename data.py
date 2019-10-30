@@ -61,7 +61,6 @@ def iter_train_pairs(model, dataset, train_pairs, qrels, batch_size):
             batch = {'query_id': [], 'doc_id': [], 'query_tok': [], 'doc_tok': []}
 
 
-
 def _iter_train_pairs(model, dataset, train_pairs, qrels):
     ds_queries, ds_docs = dataset
     while True:
@@ -138,10 +137,12 @@ def _pad_crop(items, l):
     result = []
     for item in items:
         if len(item) < l:
-            item = item + [-1] * (l - len(item))
-        if len(item) > l:
-            item = item[:l]
-        result.append(item)
+            # item = item + [-1] * (l - len(item))  # to avoid toks[toks == -1] = 0 in modeling.py
+            item_new = item + [0] * (l - len(item))
+        if len(item) >= l:
+            item_new = item[:l]
+            
+        result.append(item_new)
     # return torch.tensor(result).long().cuda()
     return torch.tensor(result).long().to(device)
 
@@ -150,10 +151,10 @@ def _mask(items, l):
     result = []
     for item in items:
         if len(item) < l:
-            item = [1. for _ in item] + ([0.] * (l - len(item)))
+            mask = [1. for _ in item] + ([0.] * (l - len(item)))
         if len(item) >= l:
-            item = [1. for _ in item[:l]]
-        result.append(item)
+            mask = [1. for _ in item[:l]]
+        result.append(mask)
 
     # return torch.tensor(result).float().cuda()
     return torch.tensor(result).float().to(device)

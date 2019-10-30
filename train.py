@@ -7,6 +7,8 @@ import torch
 import modeling
 import data
 
+import matplotlib.pyplot as plt
+
 SEED = 42
 torch.manual_seed(SEED)
 random.seed(SEED)
@@ -14,7 +16,7 @@ random.seed(SEED)
 import torch_xla.core.xla_model as xm
 device = xm.xla_device()
 
-print('device in training.py:', device)
+print('device in training.py:', device)  # xla:1
 
 MODEL_MAP = {
     'vanilla_bert': modeling.VanillaBertRanker,
@@ -29,30 +31,41 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
 
     LR = 0.001
     BERT_LR = 2e-5
-    MAX_EPOCH = 100
+    # MAX_EPOCH = 100
+    MAX_EPOCH = 30
 
     params = [(k, v) for k, v in model.named_parameters() if v.requires_grad]
     non_bert_params = {'params': [v for k, v in params if not k.startswith('bert.')]}
     bert_params = {'params': [v for k, v in params if k.startswith('bert.')], 'lr': BERT_LR}
-    # optimizer = torch.optim.Adam([non_bert_params, bert_params], lr=LR)
-    optimizer = torch.optim.SGD([non_bert_params, bert_params], lr=LR, momentum=0.9)
+    optimizer = torch.optim.Adam([non_bert_params, bert_params], lr=LR)
+    # optimizer = torch.optim.SGD([non_bert_params, bert_params], lr=LR, momentum=0.9)
 
     epoch = 0
     top_valid_score = None
+    valid_scores = []
     for epoch in range(MAX_EPOCH):
         loss = train_iteration(model, optimizer, dataset, train_pairs, qrels)
         print(f'train epoch={epoch} loss={loss}')
         valid_score = validate(model, dataset, valid_run, qrelf, epoch, model_out_dir)
+        valid_scores.append(valid_score)
         print(f'validation epoch={epoch} score={valid_score}')
+        
         if top_valid_score is None or valid_score > top_valid_score:
             top_valid_score = valid_score
             print('new top validation score, saving weights')
             model.save(os.path.join(model_out_dir, 'weights.p'))
-
+    plot_valid_score(valid_scores)
+    
+def plot_valid_score(valid_scores, name='p20'):
+    plt.plot(valid_scores)
+    plt.title(name)
+    plt.savefig(f'{name}.png')
+    print(f'saved validation scores into {name}.png')
+    
 def train_iteration(model, optimizer, dataset, train_pairs, qrels):
     BATCH_SIZE = 16
     BATCHES_PER_EPOCH = 32
-    GRAD_ACC_SIZE = 8
+    GRAD_ACC_SIZE = 2
     total = 0
     model.train()
     total_loss = 0.
@@ -62,20 +75,24 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
                            record['query_mask'],
                            record['doc_tok'],
                            record['doc_mask'])
+
             count = len(record['query_id']) // 2
             scores = scores.reshape(count, 2)
             loss = torch.mean(1. - scores.softmax(dim=1)[:, 0]) # pariwse softmax
             loss.backward()
-            # total_loss += loss.item()
+
             total_loss += loss
             total += count
+
             if total % BATCH_SIZE == 0:
                 # optimizer.step()
                 xm.optimizer_step(optimizer, barrier=True)
                 optimizer.zero_grad()
             pbar.update(count)
+
             if total >= BATCH_SIZE * BATCHES_PER_EPOCH:
-                return total_loss.item()
+                # return total_loss.item()
+                return total_loss
 
 
 def validate(model, dataset, run, qrelf, epoch, model_out_dir):
@@ -95,7 +112,7 @@ def run_model(model, dataset, run, runf, desc='valid'):
                            records['query_mask'],
                            records['doc_tok'],
                            records['doc_mask'])
-            for qid, did, score in zip(records['query_id'], records['doc_id'], scores):
+            for qid, did, score in zip(records['query_id'], records['doc_id'], scores.detach().cpu().numpy()):
                 rerank_run.setdefault(qid, {})[did] = score.item()
             pbar.update(len(records['query_id']))
     with open(runf, 'wt') as runfile:
