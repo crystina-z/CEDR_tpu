@@ -4,8 +4,10 @@ import torch
 
 import torch_xla.core.xla_model as xm
 
+# device = xm.xla_device()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device = xm.xla_device()
+print('device in data.py:', device)
+
 
 def read_datafiles(files):
     queries = {}
@@ -138,11 +140,11 @@ def _pad_crop(items, l):
     for item in items:
         if len(item) < l:
             # item = item + [-1] * (l - len(item))  # to avoid toks[toks == -1] = 0 in modeling.py
-            item_new = item + [0] * (l - len(item))
+            item = item + [0] * (l - len(item))
         if len(item) >= l:
-            item_new = item[:l]
-            
-        result.append(item_new)
+            item = item[:l]
+
+        result.append(item)
     # return torch.tensor(result).long().cuda()
     return torch.tensor(result).long().to(device)
 

@@ -5,7 +5,9 @@ import pytorch_pretrained_bert
 import modeling_util
 
 import torch_xla.core.xla_model as xm
-device = xm.xla_device()
+# device = xm.xla_device()
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
 print('device in modeling.py:', device)
 
 class BertRanker(torch.nn.Module):
