@@ -5,7 +5,6 @@ import pytorch_pretrained_bert
 import modeling_util
 
 import torch_xla.core.xla_model as xm
-# device = xm.xla_device()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 print('device in modeling.py:', device)
@@ -101,7 +100,7 @@ class VanillaBertRanker(BertRanker):
         cls_reps, _, _ = self.encode_bert(query_tok, query_mask, doc_tok, doc_mask)
         return self.cls(self.dropout(cls_reps[8])) # cannot use -1
         # return self.cls(self.dropout(cls_reps[nlayers-1]))
-        # pass
+
 
 class CedrPacrrRanker(BertRanker):
     def __init__(self):

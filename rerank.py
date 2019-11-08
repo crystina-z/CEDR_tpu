@@ -2,8 +2,10 @@ import argparse
 import train
 import data
 
+import torch
 import torch_xla.core.xla_model as xm
 device = xm.xla_device()
+# device = torch.device('cpu')
 print('device in modeling.py:', device)
 
 
