@@ -14,7 +14,8 @@ random.seed(SEED)
 import torch_xla.core.xla_model as xm
 import torch_xla.distributed.data_parallel as dp
 device = xm.xla_device()
-devices = xm.get_xla_supported_devices(max_devices=3)
+devices = xm.get_xla_supported_devices()
+# devices = xm.get_xla_supported_devices(max_devices=3)
 
 LR = 0.001
 BERT_LR = 2e-5
@@ -57,28 +58,28 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
     optimizer = torch.optim.Adam([non_bert_params, bert_params], lr=LR)
     # optimizer = torch.optim.SGD([non_bert_params, bert_params], lr=LR, momentum=0.9)
 
-    model.to(device)
-    # model_parallel = dp.DataParallel(model, device_ids=devices)
+    # model.to(device)
+    model_parallel = dp.DataParallel(model, device_ids=devices)
 
     epoch = 0
     top_valid_score = None
     for epoch in range(MAX_EPOCH):
 
-        loss = train_iteration(model, optimizer, dataset, train_pairs, qrels)
-        print(f'train epoch={epoch} loss={loss}')
+        # loss = train_iteration(model, optimizer, dataset, train_pairs, qrels)
+        # print(f'train epoch={epoch} loss={loss}')
+        # # return
+        train_set = TrainDataset(
+            it=data.iter_train_pairs(model, dataset, train_pairs, qrels, 1),
+            length=BATCH_SIZE * BATCHES_PER_EPOCH
+        )
+        train_loader = torch.utils.data.DataLoader(train_set, batch_size=GRAD_ACC_SIZE,)
+        # for i, tr in enumerate(train_loader):
+        #     for tt in tr:
+        #         print(tt, tr[tt].size())
+        #     break
+        # print('finished')
         # return
-        # train_set = TrainDataset(
-        #     it=data.iter_train_pairs(model, dataset, train_pairs, qrels, 1),
-        #     length=BATCH_SIZE * BATCHES_PER_EPOCH
-        # )
-        # train_loader = torch.utils.data.DataLoader(train_set, batch_size=GRAD_ACC_SIZE,)
-        # # for i, tr in enumerate(train_loader):
-        # #     for tt in tr:
-        # #         print(tt, tr[tt].size())
-        # #     break
-        # # print('finished')
-        # return
-        # model_parallel(train_iteration_multi, train_loader)
+        model_parallel(train_iteration_multi, train_loader)
 
         '''
         valid_score = validate(model, dataset, valid_run, qrelf, epoch, model_out_dir)
