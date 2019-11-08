@@ -84,7 +84,7 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
             total += count
 
             if total % BATCH_SIZE == 0:
-                optimizer.step()
+                xm.optimizer_step(optimizer, barrier=True)
                 optimizer.zero_grad()
 
             pbar.update(count)
