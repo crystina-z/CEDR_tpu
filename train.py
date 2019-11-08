@@ -14,8 +14,8 @@ torch.manual_seed(SEED)
 random.seed(SEED)
 
 import torch_xla.core.xla_model as xm
-# device = xm.xla_device()
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = xm.xla_device()
+# device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 print('device in training.py:', device)  # xla:1
 
@@ -39,7 +39,6 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
     non_bert_params = {'params': [v for k, v in params if not k.startswith('bert.')]}
     bert_params = {'params': [v for k, v in params if k.startswith('bert.')], 'lr': BERT_LR}
     optimizer = torch.optim.Adam([non_bert_params, bert_params], lr=LR)
-    # optimizer = torch.optim.SGD([non_bert_params, bert_params], lr=LR, momentum=0.9)
 
     epoch = 0
     top_valid_score = None
@@ -155,17 +154,6 @@ def main_cli():
     os.makedirs(args.model_out_dir, exist_ok=True)
     main(model, dataset, train_pairs, qrels, valid_run, args.qrels.name, args.model_out_dir)
 
-def check_model_size(model, input_size=(16,1,256,256)):
-    print('checking model size')
-    from pytorch_modelsize import SizeEstimator
-
-    # se = SizeEstimator(model, input_size=(16,1,256,256))
-    se = SizeEstimator(model, input_size=input_size)
-
-    se.get_parameter_sizes()
-    se.calc_param_bits()
-
-    print('param_bits: ', se.param_bits)
 
 if __name__ == '__main__':
     main_cli()
