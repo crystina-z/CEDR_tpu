@@ -1,0 +1,1 @@
+bin/trec_eval -m map -m ndcg_cut.20 -m P.20 sample_results/qrels sample_results/test.run
