@@ -31,8 +31,10 @@ class BertRanker(torch.nn.Module):
                 del state[key]
         torch.save(state, path)
 
-    def load(self, path):
-        self.load_state_dict(torch.load(path), strict=False)
+    def load(self, path, map_location=device):
+        self.load_state_dict(
+            torch.load(path, map_location=map_location),
+            strict=False)
 
     @memoize_method
     def tokenize(self, text):

@@ -33,7 +33,7 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
     LR = 0.001
     BERT_LR = 2e-5
     # MAX_EPOCH = 100
-    MAX_EPOCH = 30
+    MAX_EPOCH = 10
 
     params = [(k, v) for k, v in model.named_parameters() if v.requires_grad]
     non_bert_params = {'params': [v for k, v in params if not k.startswith('bert.')]}
@@ -42,10 +42,12 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
 
     epoch = 0
     top_valid_score = None
-    valid_scores = []
+    valid_scores, losses = [], []
     for epoch in range(MAX_EPOCH):
         loss = train_iteration(model, optimizer, dataset, train_pairs, qrels)
+        losses.append(loss)
         print(f'train epoch={epoch} loss={loss}')
+
         valid_score = validate(model, dataset, valid_run, qrelf, epoch, model_out_dir)
         valid_scores.append(valid_score)
         print(f'validation epoch={epoch} score={valid_score}')
@@ -54,14 +56,18 @@ def main(model, dataset, train_pairs, qrels, valid_run, qrelf, model_out_dir):
             top_valid_score = valid_score
             print('new top validation score, saving weights')
             model.save(os.path.join(model_out_dir, 'weights.p'))
-    plot_valid_score(valid_scores)
+
+    plot(losses, name='training loss')
+    plot(valid_scores, name='validation score (p20)')
+
     
-def plot_valid_score(valid_scores, name='p20'):
-    plt.plot(valid_scores)
+def plot(values, name):
+    plt.figure()
+    plt.plot(values)
     plt.title(name)
     plt.savefig(f'{name}.png')
-    print(f'saved validation scores into {name}.png')
-    
+    print(f'saved {name}.png')
+
 def train_iteration(model, optimizer, dataset, train_pairs, qrels):
     BATCH_SIZE = 16
     BATCHES_PER_EPOCH = 32
@@ -92,7 +98,7 @@ def train_iteration(model, optimizer, dataset, train_pairs, qrels):
 
             if total >= BATCH_SIZE * BATCHES_PER_EPOCH:
                 # return total_loss.item()
-                return total_loss
+                return total_loss.item()
 
 
 def validate(model, dataset, run, qrelf, epoch, model_out_dir):
@@ -133,7 +139,8 @@ def trec_eval(qrelf, runf, metric):
 def main_cli():
     parser = argparse.ArgumentParser('CEDR model training and validation')
     parser.add_argument('--model', choices=MODEL_MAP.keys(), default='vanilla_bert')
-    parser.add_argument('--datafiles', type=argparse.FileType('rt'), nargs='+')
+    parser.add_argument('--datafiles', nargs='+')
+    # parser.add_argument('--datafiles', type=argparse.FileType('rt'), nargs='+')
     parser.add_argument('--qrels', type=argparse.FileType('rt'))
     parser.add_argument('--train_pairs', type=argparse.FileType('rt'))
     parser.add_argument('--valid_run', type=argparse.FileType('rt'))
@@ -141,11 +148,13 @@ def main_cli():
     parser.add_argument('--model_out_dir')
     args = parser.parse_args()
     
+    print('datafiles: ', args.datafiles)
+    datafiles = [open(f, 'r', encoding='utf-8') for f in args.datafiles]
     model = MODEL_MAP[args.model]()
     
-    check_model_size(model);
-    
-    dataset = data.read_datafiles(args.datafiles)
+    # dataset = data.read_datafiles(args.datafiles)
+    dataset = data.read_datafiles(datafiles)
+
     qrels = data.read_qrels_dict(args.qrels)
     train_pairs = data.read_pairs_dict(args.train_pairs)
     valid_run = data.read_run_dict(args.valid_run)
